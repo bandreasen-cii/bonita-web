@@ -15,6 +15,8 @@
 package org.bonitasoft.web.rest.server.api.extension;
 
 import java.io.IOException;
+import java.io.Serializable;
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +42,7 @@ import org.restlet.engine.header.HeaderUtils;
 import org.restlet.ext.servlet.ServletUtils;
 import org.restlet.representation.Representation;
 import org.restlet.representation.StringRepresentation;
+import org.restlet.representation.ByteArrayRepresentation;
 import org.restlet.resource.ServerResource;
 
 /**
@@ -61,11 +64,9 @@ public class ApiExtensionResource extends ServerResource {
 
     @Override
     public Representation doHandle() {
-        final StringRepresentation stringRepresentation = new StringRepresentation(EMPTY_RESPONSE);
         try {
             final RestApiResponse restApiResponse = handleRequest();
-            fillAllContent(stringRepresentation, restApiResponse);
-            return stringRepresentation;
+            return fillAllContent(restApiResponse);
         } catch (final BonitaException e) {
             LOGGER.log(Level.SEVERE, "Failed to handle API Extension call", e);
             getResponse().setStatus(Status.SERVER_ERROR_INTERNAL);
@@ -73,17 +74,31 @@ public class ApiExtensionResource extends ServerResource {
         }
     }
 
-    private void fillAllContent(StringRepresentation stringRepresentation, RestApiResponse restApiResponse)
+    private Representation fillAllContent(RestApiResponse restApiResponse)
             throws BonitaException {
         if (restApiResponse == null) {
             throw new BonitaException("error: restApiResponse is null");
         }
-        stringRepresentation.setCharacterSet(new CharacterSet(restApiResponse.getCharacterSet()));
-        stringRepresentation.setMediaType(new MediaType(restApiResponse.getMediaType()));
-        getResponse().setStatus(new Status(restApiResponse.getHttpStatus()));
-        fillContent(stringRepresentation, restApiResponse);
-        fillHeaders(stringRepresentation, restApiResponse);
-        fillCookies(restApiResponse);
+        final Serializable response = restApiResponse.getResponse();
+        if (response != null && response instanceof byte[]) {
+            final ByteArrayRepresentation byteArrayRepresentation =
+                    new ByteArrayRepresentation(((byte[])response));
+            byteArrayRepresentation.setCharacterSet(new CharacterSet(restApiResponse.getCharacterSet()));
+            byteArrayRepresentation.setMediaType(new MediaType(restApiResponse.getMediaType()));
+            getResponse().setStatus(new Status(restApiResponse.getHttpStatus()));
+            fillHeaders(byteArrayRepresentation, restApiResponse);
+            fillCookies(restApiResponse);
+            return byteArrayRepresentation;
+        } else {
+            final StringRepresentation stringRepresentation = new StringRepresentation(EMPTY_RESPONSE);
+            stringRepresentation.setCharacterSet(new CharacterSet(restApiResponse.getCharacterSet()));
+            stringRepresentation.setMediaType(new MediaType(restApiResponse.getMediaType()));
+            getResponse().setStatus(new Status(restApiResponse.getHttpStatus()));
+            fillContent(stringRepresentation, restApiResponse);
+            fillHeaders(stringRepresentation, restApiResponse);
+            fillCookies(restApiResponse);
+            return stringRepresentation;
+        }
     }
 
     private void fillCookies(RestApiResponse restApiResponse) {
@@ -93,7 +108,7 @@ public class ApiExtensionResource extends ServerResource {
         }
     }
 
-    private void fillHeaders(StringRepresentation representation, RestApiResponse restApiResponse) {
+    private void fillHeaders(Representation representation, RestApiResponse restApiResponse) {
         List<Header> headers = new ArrayList<>();
         for (final Map.Entry<String, String> entry : restApiResponse.getAdditionalHeaders().entrySet()) {
             //RESTLET do not support content range header, use RESTLET Ranges instead
